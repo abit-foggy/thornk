@@ -1,0 +1,20 @@
+# Sample Linux Kbuild Makefile for testing thornk conversion
+ccflags-y := -Wall -Wstrict-prototypes
+
+# Core subsystem objects with backslash line continuation
+obj-y := core.o \
+         init.o \
+         main.o
+obj-y += sys.o
+
+# Composite device driver module
+obj-m += e1000e.o
+e1000e-objs := netdev.o \
+               ethtool.o \
+               phy.o
+
+# Self-tests (should be filtered out by thornk hooks)
+obj-y += kunit_core_test.o
+kunit_core_test-objs := test_framework.o test_cases.o
+selftest_net-objs := test_net.o
+obj-y += selftest_net.o

@@ -1,0 +1,7 @@
+thorn.build
+build.ninja
+Makefile.posix
+out/
+*.o
+*.a
+*.so
