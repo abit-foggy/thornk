@@ -1,17 +1,17 @@
 # kconfig.pi - .config reader and variable evaluator for thornk
-import "/home/foggy/thornk/src/thornk_c.c"
+import "/home/foggy/thornk/src/thornk.c"
 
 fn parse_kconfig(path)
-    count = thornk_c.parse_kconfig_file(path)
+    count = thornk.parse_kconfig_file(path)
     return count
 end
 
 fn get_kconfig_var(key)
-    val = thornk_c.is_config_set(key)
+    val = thornk.is_config_set(key)
     return val
 end
 
 fn eval_kconfig_expr(kmap, expr)
-    enabled = thornk_c.is_expr_enabled(expr)
+    enabled = thornk.is_expr_enabled(expr)
     return enabled
 end

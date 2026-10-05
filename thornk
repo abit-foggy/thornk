@@ -18,7 +18,7 @@ if [ ! -f "$DIR/bin/thornk" ] || \
    [ "$DIR/src/kconfig.pi" -nt "$DIR/bin/thornk" ] || \
    [ "$DIR/src/composite.pi" -nt "$DIR/bin/thornk" ] || \
    [ "$DIR/src/walker.pi" -nt "$DIR/bin/thornk" ] || \
-   [ "$DIR/src/thornk_c.c" -nt "$DIR/bin/thornk" ]; then
+   [ "$DIR/src/thornk.c" -nt "$DIR/bin/thornk" ]; then
     pith build "$DIR/src/kconfig.pi" "$DIR/src/composite.pi" "$DIR/src/walker.pi" "$DIR/src/main.pi" -o "$DIR/bin/thornk" > /dev/null 2>&1
 fi
 

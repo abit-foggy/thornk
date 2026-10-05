@@ -1,6 +1,6 @@
 # main.pi - CLI driver and compiler setup for thornk
 import "/home/foggy/thorn/src/decompile.c"
-import "/home/foggy/thornk/src/thornk_c.c"
+import "/home/foggy/thornk/src/thornk.c"
 
 # Ingest CLI arguments
 argc = proc.argCount()
@@ -12,16 +12,16 @@ end
 mut a_idx = 1
 while a_idx < argc
     arg = proc.getArg(a_idx)
-    thornk_c.add_cli_arg(arg)
+    thornk.add_cli_arg(arg)
     a_idx = a_idx + 1
 end
 
-thornk_c.process_cli_args()
+thornk.process_cli_args()
 
-kernel_dir = thornk_c.get_kernel_dir()
-config_path = thornk_c.get_config_path()
-arch = thornk_c.get_arch()
-out_file = thornk_c.get_out_file()
+kernel_dir = thornk.get_kernel_dir()
+config_path = thornk.get_config_path()
+arch = thornk.get_arch()
+out_file = thornk.get_out_file()
 
 print "thornk: configuring Linux kernel build"
 print "kernel root: " + kernel_dir
@@ -30,9 +30,9 @@ print "config: " + config_path
 print "output: " + out_file
 
 # Step 1: Initialize Thorn and load .config
-thornk_c.kconfig_reset()
-cfg_count = thornk_c.parse_kconfig_file(config_path)
-thornk_c.print_stat("loaded config entries: ", cfg_count)
+thornk.kconfig_reset()
+cfg_count = thornk.parse_kconfig_file(config_path)
+thornk.print_stat("loaded config entries: ", cfg_count)
 
 mut proj_name = os.getEnv("PROJECT")
 if str.length(proj_name) == 0
@@ -83,7 +83,7 @@ else
 end
 
 # Step 4: Emit output (Ninja or Thorn spec)
-is_spec = thornk_c.is_spec_output()
+is_spec = thornk.is_spec_output()
 if is_spec == 1
     spec = decompile.to_thorn()
     fs.writeFile(out_file, spec)
@@ -94,4 +94,4 @@ end
 # Step 5: Print generation stats
 total_targets = decompile.target_count()
 print "thornk: successfully generated " + out_file
-thornk_c.print_stat("total targets: ", total_targets)
+thornk.print_stat("total targets: ", total_targets)
