@@ -1,61 +1,70 @@
 # thornk
 
-Kbuild to `thorn.build` converter powered by Pith JIT and Thorn's hookable decompiler engine.
+Linux Kbuild to Ninja / `thorn.build` converter powered by Pith and Thorn's embedded decompiler FFI.
 
-`thornk` ingests Linux kernel `Kbuild` and `Makefile` trees, resolves multi-line continuations, composite modules (`-objs`, `-y`), and variable assignments, strips non-portable GCC compiler flags, injects kernel headers, and emits clean `thorn.build` specifications.
+`thornk` converts Linux kernel trees and Kbuild Makefiles into byte-deterministic Ninja build graphs (`build.ninja`) and `thorn.build` specifications. It evaluates `.config` options, resolves composite modules (`-objs`, `-y`, `-m`), handles multi-line continuations, recurses into subdirectories, recognizes native assembly (`.s` / `.S`), injects freestanding kernel flags, and filters unconfigured or test targets.
 
 ## Prerequisites
 
 - [pith](file:///home/foggy/pith) (in `$PATH` or at `/home/foggy/pith/pith`)
 - [thorn](file:///home/foggy/thorn) (at `/home/foggy/thorn`)
+- [samu](file:///usr/bin/samu) or ninja
 
 ## Quick Start
 
-Convert a Kbuild file to `thorn.build`:
+### 1. Build thornk
 
 ```bash
-./thornk path/to/Kbuild
+make build
 ```
 
-Convert with custom output path:
+This compiles the standalone `bin/thornk` binary via Pith.
+
+### 2. Convert a Linux Kernel Tree to Ninja
+
+Convert a Linux kernel source tree into a Ninja build graph:
 
 ```bash
-./thornk path/to/Kbuild my_output.thorn
+./thornk path/to/linux --config path/to/.config --arch x86 --out out/build.ninja
 ```
 
-Run with Pith JIT directly:
+Options:
+- `--config <path>`: Path to kernel `.config` (default: `<kernel_dir>/.config`)
+- `--arch <arch>`: Target architecture (default: `x86`)
+- `--out <file>`: Output Ninja or Thorn spec file (default: `build.ninja`)
+
+### 3. Build with Samu / Ninja
 
 ```bash
-pith run thornk.pi
+samu -f out/build.ninja
+```
+
+### 4. Convert Single Kbuild / Makefile to `thorn.build`
+
+```bash
+./thornk path/to/Kbuild thorn.build
 ```
 
 Override project name via environment:
 
 ```bash
-PROJECT=my_driver ./thornk path/to/Kbuild
-```
-
-## Generate Build Backends with Thorn
-
-Once `thorn.build` is generated, compile it with Thorn to Ninja or POSIX Make:
-
-```bash
-# Generate build.ninja
-thorn -f thorn.build --engine ninja
-
-# Generate portable Makefile
-thorn -f thorn.build --engine make
-
-# Build with samu or ninja
-samu -f build.ninja
+PROJECT=my_driver ./thornk path/to/Kbuild thorn.build
 ```
 
 ## Running Tests
 
-Run the test suite:
+Run the acceptance and verification suites:
 
 ```bash
 make test
-# or
+```
+
+Or run individual test scripts:
+
+```bash
+# Tree conversion and samu execution test
+./test/test_thornk.sh
+
+# Single file Kbuild conversion test
 ./tests/test_thornk.sh
 ```

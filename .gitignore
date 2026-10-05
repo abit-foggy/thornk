@@ -2,6 +2,10 @@ thorn.build
 build.ninja
 Makefile.posix
 out/
+bin/
+thornk_bin
+.ninja_deps
+.ninja_log
 *.o
 *.a
 *.so

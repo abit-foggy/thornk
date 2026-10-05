@@ -1,0 +1,48 @@
+# composite.pi - Composite object and module dependency tracking for thornk
+import "/home/foggy/thorn/src/decompile.c"
+import "/home/foggy/thornk/src/thornk_c.c"
+
+fn resolve_composite_objects(makefile_path, scope, root_dir)
+    n = thornk_c.scan_composite_objects(makefile_path, scope)
+    mut c_idx = 0
+    while c_idx < n
+        target_name = thornk_c.get_composite_target(c_idx)
+        t_scope = thornk_c.get_composite_scope(c_idx)
+        is_mod = thornk_c.get_composite_is_module(c_idx)
+        nm = thornk_c.get_composite_member_count(c_idx)
+
+        qualified_tgt = thornk_c.qualify_target(t_scope, target_name)
+        decompile.set_target_type(qualified_tgt, 2)
+
+        mut m_idx = 0
+        while m_idx < nm
+            mem_o = thornk_c.get_composite_member(c_idx, m_idx)
+            src_file = thornk_c.resolve_source_path(root_dir, t_scope, mem_o)
+            decompile.add_target_source(qualified_tgt, src_file)
+            m_idx = m_idx + 1
+        end
+
+        if is_mod == 1
+            decompile.add_command_edge(qualified_tgt, "ld -r -o $out $in", "")
+        end
+
+        c_idx = c_idx + 1
+    end
+    return n
+end
+
+fn resolve_direct_objects(makefile_path, scope, root_dir)
+    nd = thornk_c.scan_direct_objects(makefile_path, scope)
+    if nd > 0
+        tgt = thornk_c.qualify_target(scope, "built-in.a")
+        decompile.set_target_type(tgt, 2)
+        mut d_idx = 0
+        while d_idx < nd
+            mem_o = thornk_c.get_direct_member(d_idx)
+            src_file = thornk_c.resolve_source_path(root_dir, scope, mem_o)
+            decompile.add_target_source(tgt, src_file)
+            d_idx = d_idx + 1
+        end
+    end
+    return nd
+end

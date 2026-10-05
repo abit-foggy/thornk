@@ -1,12 +1,17 @@
-.PHONY: all run test clean
+.PHONY: all build run test clean
 
-all: run
+all: build
 
-run:
+build:
+	@mkdir -p bin
+	pith build src/kconfig.pi src/composite.pi src/walker.pi src/main.pi -o bin/thornk
+
+run: build
 	./thornk fixtures/Kbuild.sample thorn.build
 
-test:
+test: build
 	./tests/test_thornk.sh
+	./test/test_thornk.sh
 
 clean:
-	rm -f thorn.build build.ninja Makefile.posix
+	rm -rf bin out thorn.build build.ninja Makefile.posix thornk_bin

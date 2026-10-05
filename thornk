@@ -1,29 +1,25 @@
 #!/bin/sh
-# thornk - Kbuild to thorn.build converter (Pith JIT)
-
+# thornk - Kbuild to Ninja / thorn.build converter
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    printf 'Usage: thornk [KBUILD_FILE] [OUTPUT_SPEC]\n\n'
-    printf 'Converts a Linux Kbuild/Makefile into a thorn.build specification.\n\n'
-    printf 'Arguments:\n'
-    printf '  KBUILD_FILE    Path to Kbuild or Makefile (default: Kbuild, Makefile, or fixtures/Kbuild.sample)\n'
-    printf '  OUTPUT_SPEC    Output specification path (default: thorn.build)\n\n'
-    printf 'Environment:\n'
-    printf '  PROJECT        Project name override (default: linux_subsystem)\n'
-    printf '  KBUILD         Alternative way to pass KBUILD_FILE\n'
-    printf '  OUTPUT         Alternative way to pass OUTPUT_SPEC\n'
+    printf 'Usage: thornk <kernel_source_dir> [--config <path>] [--arch <arch>] [--out <file>]\n'
+    printf '       thornk [KBUILD_FILE] [OUTPUT_SPEC]\n\n'
+    printf 'Converts Linux Kbuild trees or files to Ninja or thorn.build specifications.\n'
     exit 0
 fi
 
-if [ -n "$1" ]; then
-    export KBUILD="$1"
+# Ensure bin directory exists and build binary if missing or sources updated
+mkdir -p "$DIR/bin"
+if [ ! -f "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/main.pi" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/kconfig.pi" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/composite.pi" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/walker.pi" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/thornk_c.c" -nt "$DIR/bin/thornk" ]; then
+    pith build "$DIR/src/kconfig.pi" "$DIR/src/composite.pi" "$DIR/src/walker.pi" "$DIR/src/main.pi" -o "$DIR/bin/thornk" > /dev/null 2>&1
 fi
 
-if [ -n "$2" ]; then
-    export OUTPUT="$2"
-fi
-
-exec pith run "$DIR/thornk.pi"
+exec "$DIR/bin/thornk" "$@"
