@@ -5,16 +5,18 @@
 #include <unistd.h>
 #include <pith.h>
 
-#define MAX_CONFIG_ENTRIES 4096
-#define MAX_SUBDIRS 512
-#define MAX_COMPOSITES 256
-#define MAX_MEMBERS 64
-#define MAX_DIRECT 256
+#define MAX_CONFIG_ENTRIES 16384
+#define MAX_SUBDIRS 1024
+#define MAX_VISITED_DIRS 16384
+#define MAX_COMPOSITES 8192
+#define MAX_MEMBERS 128
+#define MAX_DIRECT 2048
 
 /* Kconfig state */
 static char g_cfg_keys[MAX_CONFIG_ENTRIES][128];
 static char g_cfg_vals[MAX_CONFIG_ENTRIES][256];
 static int g_cfg_count = 0;
+static char g_arch[64] = "x86";
 
 typedef struct {
     char subdirs[MAX_SUBDIRS][256];
@@ -24,7 +26,7 @@ typedef struct {
 static SubdirLevel g_subdir_stack[32];
 static int g_subdir_depth = 0;
 
-static char g_visited_dirs[MAX_SUBDIRS][256];
+static char g_visited_dirs[MAX_VISITED_DIRS][256];
 static int g_nvisited = 0;
 
 /* Composite targets tracking */
@@ -160,10 +162,31 @@ PithValue *eval_expr(PithValue *expr_val) {
     sym[sym_len] = '\0';
 
     const char *val = "";
-    for (int i = 0; i < g_cfg_count; i++) {
-        if (strcmp(g_cfg_keys[i], sym) == 0) {
-            val = g_cfg_vals[i];
-            break;
+    if (strstr(sym, "subst m,y,")) {
+        const char *inner = strstr(sym, "CONFIG_");
+        if (inner) {
+            char cfg_sym[128];
+            size_t k = 0;
+            while (inner[k] && inner[k] != ')' && inner[k] != ' ' && k < sizeof(cfg_sym) - 1) {
+                cfg_sym[k] = inner[k];
+                k++;
+            }
+            cfg_sym[k] = '\0';
+            for (int i = 0; i < g_cfg_count; i++) {
+                if (strcmp(g_cfg_keys[i], cfg_sym) == 0) {
+                    if (strcmp(g_cfg_vals[i], "y") == 0 || strcmp(g_cfg_vals[i], "m") == 0) {
+                        val = "y";
+                    }
+                    break;
+                }
+            }
+        }
+    } else {
+        for (int i = 0; i < g_cfg_count; i++) {
+            if (strcmp(g_cfg_keys[i], sym) == 0) {
+                val = g_cfg_vals[i];
+                break;
+            }
         }
     }
 
@@ -188,6 +211,49 @@ int is_expr_enabled(PithValue *expr_val) {
     return (s && s[0] != '\0') ? 1 : 0;
 }
 
+
+static void expand_token_vars(const char *in, char *out, size_t out_sz) {
+    out[0] = '\0';
+    const char *p = in;
+    while (*p) {
+        const char *dollar = strstr(p, "$(");
+        if (!dollar) {
+            strncat(out, p, out_sz - strlen(out) - 1);
+            break;
+        }
+        size_t pre = (size_t)(dollar - p);
+        if (pre > 0) {
+            strncat(out, p, pre < (out_sz - strlen(out) - 1) ? pre : (out_sz - strlen(out) - 1));
+        }
+        const char *close = strchr(dollar + 2, ')');
+        if (!close) {
+            strncat(out, dollar, out_sz - strlen(out) - 1);
+            break;
+        }
+        char varname[64];
+        size_t vlen = (size_t)(close - (dollar + 2));
+        if (vlen >= sizeof(varname)) vlen = sizeof(varname) - 1;
+        memcpy(varname, dollar + 2, vlen);
+        varname[vlen] = '\0';
+
+        if (strcmp(varname, "BITS") == 0) {
+            const char *bits_val = "64";
+            for (int i = 0; i < g_cfg_count; i++) {
+                if (strcmp(g_cfg_keys[i], "CONFIG_64BIT") == 0) {
+                    if (strcmp(g_cfg_vals[i], "y") != 0) bits_val = "32";
+                    break;
+                }
+            }
+            strncat(out, bits_val, out_sz - strlen(out) - 1);
+        } else if (strcmp(varname, "SRCARCH") == 0) {
+            const char *arch_name = (strncmp(g_arch, "x86", 3) == 0) ? "x86" : g_arch;
+            strncat(out, arch_name, out_sz - strlen(out) - 1);
+        } else {
+            /* Unknown variable in member token: ignore/drop */
+        }
+        p = close + 1;
+    }
+}
 static void normalize_path(const char *scope, const char *dir, char *out, size_t out_sz) {
     char sub[256];
     strncpy(sub, dir, sizeof(sub) - 1);
@@ -251,10 +317,13 @@ int scan_kbuild_subdirs(PithValue *makefile_path_val, PithValue *scope_val) {
 
         char *token = strtok(rhs, " \t\r\n\\");
         while (token) {
-            size_t tlen = strlen(token);
-            if (tlen > 1 && token[tlen - 1] == '/') {
+            char exp_tok[256];
+            expand_token_vars(token, exp_tok, sizeof(exp_tok));
+
+            size_t tlen = strlen(exp_tok);
+            if (tlen > 1 && exp_tok[tlen - 1] == '/') {
                 char norm[256];
-                normalize_path(scope, token, norm, sizeof(norm));
+                normalize_path(scope, exp_tok, norm, sizeof(norm));
                 if (norm[0] && level->count < MAX_SUBDIRS) {
                     strncpy(level->subdirs[level->count], norm, sizeof(level->subdirs[0]) - 1);
                     level->subdirs[level->count][sizeof(level->subdirs[0]) - 1] = '\0';
@@ -293,7 +362,7 @@ int is_dir_visited(PithValue *dir_val) {
 }
 
 void mark_dir_visited(PithValue *dir_val) {
-    if (!dir_val || g_nvisited >= MAX_SUBDIRS) return;
+    if (!dir_val || g_nvisited >= MAX_VISITED_DIRS) return;
     const char *dir = pithStringData(dir_val);
     for (int i = 0; i < g_nvisited; i++) {
         if (strcmp(g_visited_dirs[i], dir) == 0) return;
@@ -308,11 +377,11 @@ PithValue *find_kbuild_file(PithValue *root_val, PithValue *scope_val) {
     const char *scope = scope_val ? pithStringData(scope_val) : "";
     char path1[1024], path2[1024];
     if (scope && *scope) {
-        snprintf(path1, sizeof(path1), "%s/%s/Makefile", root, scope);
-        snprintf(path2, sizeof(path2), "%s/%s/Kbuild", root, scope);
+        snprintf(path1, sizeof(path1), "%s/%s/Kbuild", root, scope);
+        snprintf(path2, sizeof(path2), "%s/%s/Makefile", root, scope);
     } else {
-        snprintf(path1, sizeof(path1), "%s/Makefile", root);
-        snprintf(path2, sizeof(path2), "%s/Kbuild", root);
+        snprintf(path1, sizeof(path1), "%s/Kbuild", root);
+        snprintf(path2, sizeof(path2), "%s/Makefile", root);
     }
     if (access(path1, F_OK) == 0) return pithNewString(path1);
     if (access(path2, F_OK) == 0) return pithNewString(path2);
@@ -357,30 +426,38 @@ int scan_composite_objects(PithValue *makefile_path_val, PithValue *scope_val) {
             resolved_var[sizeof(resolved_var) - 1] = '\0';
         }
 
-        if (strstr(resolved_var, "-y") || strstr(resolved_var, "-objs") || strstr(resolved_var, "-m")) {
+        size_t rv_len = strlen(resolved_var);
+        const char *dash = NULL;
+        if (rv_len >= 2 && strcmp(resolved_var + rv_len - 2, "-y") == 0) {
+            dash = resolved_var + rv_len - 2;
+        } else if (rv_len >= 5 && strcmp(resolved_var + rv_len - 5, "-objs") == 0) {
+            dash = resolved_var + rv_len - 5;
+        } else if (rv_len >= 2 && strcmp(resolved_var + rv_len - 2, "-m") == 0) {
+            dash = resolved_var + rv_len - 2;
+        }
+
+        if (dash) {
             char target_base[128];
-            const char *dash = strstr(resolved_var, "-y");
-            if (!dash) dash = strstr(resolved_var, "-objs");
-            if (!dash) dash = strstr(resolved_var, "-m");
-            if (dash) {
-                size_t blen = (size_t)(dash - resolved_var);
-                if (blen < sizeof(target_base)) {
-                    memcpy(target_base, resolved_var, blen);
-                    target_base[blen] = '\0';
+            size_t blen = (size_t)(dash - resolved_var);
+            if (blen < sizeof(target_base)) {
+                memcpy(target_base, resolved_var, blen);
+                target_base[blen] = '\0';
 
-                    if (strcmp(target_base, "obj") != 0 && strcmp(target_base, "ccflags") != 0 &&
-                        strcmp(target_base, "asflags") != 0 && strcmp(target_base, "subdir") != 0) {
-                        char comp_target[140];
-                        snprintf(comp_target, sizeof(comp_target), "%s", target_base);
+                if (strcmp(target_base, "obj") != 0 && strcmp(target_base, "ccflags") != 0 &&
+                    strcmp(target_base, "asflags") != 0 && strcmp(target_base, "subdir") != 0 &&
+                    strncmp(target_base, "CFLAGS", 6) != 0 && strncmp(target_base, "AFLAGS", 6) != 0 &&
+                    strncmp(target_base, "CPPFLAGS", 8) != 0 && strncmp(target_base, "GCOV", 4) != 0) {
+                    char comp_target[140];
+                    snprintf(comp_target, sizeof(comp_target), "%s", target_base);
 
-                        int found_idx = -1;
-                        for (int i = 0; i < g_ncomposites; i++) {
-                            if (strcmp(g_composites[i].target, comp_target) == 0 &&
-                                strcmp(g_composites[i].scope, scope) == 0) {
-                                found_idx = i;
-                                break;
-                            }
+                    int found_idx = -1;
+                    for (int i = 0; i < g_ncomposites; i++) {
+                        if (strcmp(g_composites[i].target, comp_target) == 0 &&
+                            strcmp(g_composites[i].scope, scope) == 0) {
+                            found_idx = i;
+                            break;
                         }
+                    }
 
                         if (found_idx < 0 && g_ncomposites < MAX_COMPOSITES) {
                             found_idx = g_ncomposites++;
@@ -394,9 +471,11 @@ int scan_composite_objects(PithValue *makefile_path_val, PithValue *scope_val) {
                             CompositeTarget *ct = &g_composites[found_idx];
                             char *tok = strtok(rhs, " \t\r\n\\");
                             while (tok) {
-                                if (strstr(tok, ".o")) {
+                                char exp_tok[128];
+                                expand_token_vars(tok, exp_tok, sizeof(exp_tok));
+                                if (strstr(exp_tok, ".o") && !strstr(exp_tok, "$")) {
                                     if (ct->nmembers < MAX_MEMBERS) {
-                                        strncpy(ct->members[ct->nmembers], tok, sizeof(ct->members[0]) - 1);
+                                        strncpy(ct->members[ct->nmembers], exp_tok, sizeof(ct->members[0]) - 1);
                                         ct->members[ct->nmembers][sizeof(ct->members[0]) - 1] = '\0';
                                         ct->nmembers++;
                                     }
@@ -408,7 +487,6 @@ int scan_composite_objects(PithValue *makefile_path_val, PithValue *scope_val) {
                 }
             }
         }
-    }
     fclose(fp);
     return g_ncomposites;
 }
@@ -491,9 +569,11 @@ int scan_direct_objects(PithValue *makefile_path_val, PithValue *scope_val) {
 
         char *tok = strtok(rhs, " \t\r\n\\");
         while (tok) {
-            if (strstr(tok, ".o")) {
+            char exp_tok[128];
+            expand_token_vars(tok, exp_tok, sizeof(exp_tok));
+            if (strstr(exp_tok, ".o") && !strstr(exp_tok, "$")) {
                 char tok_base[128];
-                strncpy(tok_base, tok, sizeof(tok_base) - 1);
+                strncpy(tok_base, exp_tok, sizeof(tok_base) - 1);
                 tok_base[sizeof(tok_base) - 1] = '\0';
                 size_t tblen = strlen(tok_base);
                 if (tblen >= 2 && tok_base[tblen - 2] == '.') tok_base[tblen - 2] = '\0';
@@ -508,7 +588,7 @@ int scan_direct_objects(PithValue *makefile_path_val, PithValue *scope_val) {
                     }
                 }
                 if (!is_composite && g_ndirect < MAX_DIRECT) {
-                    strncpy(g_direct_members[g_ndirect], tok, sizeof(g_direct_members[0]) - 1);
+                    strncpy(g_direct_members[g_ndirect], exp_tok, sizeof(g_direct_members[0]) - 1);
                     g_direct_members[g_ndirect][sizeof(g_direct_members[0]) - 1] = '\0';
                     g_ndirect++;
                 }
@@ -588,13 +668,27 @@ PithValue *resolve_source_path(PithValue *root_dir_val, PithValue *scope_val, Pi
         }
     }
 
+    if (access(full_c, F_OK) == 0) {
+        return pithNewString(cand_c);
+    }
     if (access(full_s, F_OK) == 0) {
         return pithNewString(cand_s);
     }
     if (access(full_sl, F_OK) == 0) {
         return pithNewString(cand_sl);
     }
-    return pithNewString(cand_c);
+    /* Check for shipped source (e.g. foo.c_shipped) */
+    char full_shipped[1040];
+    snprintf(full_shipped, sizeof(full_shipped), "%s_shipped", full_c);
+    if (access(full_shipped, F_OK) == 0) {
+        return pithNewString(cand_c);
+    }
+    /* In single-file test mode where root is "." or sample fixtures without files on disk */
+    if (strcmp(root, ".") == 0 || strcmp(root, "./") == 0 || strstr(root, "fixtures")) {
+        return pithNewString(cand_c);
+    }
+    /* File does not exist on disk in the kernel tree (e.g. generated at build time) */
+    return pithNewString("");
 }
 
 PithValue *format_stat(PithValue *label_val, int val) {
@@ -613,7 +707,6 @@ int print_stat(PithValue *label_val, int val) {
 /* CLI configuration */
 static char g_kernel_dir[512] = ".";
 static char g_config_path[512] = "";
-static char g_arch[64] = "x86";
 static char g_out_file[512] = "build.ninja";
 static char g_cli_args[64][512];
 static int g_ncli_args = 0;

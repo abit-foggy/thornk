@@ -18,13 +18,12 @@ fn resolve_composite_objects(makefile_path, scope, root_dir)
         while m_idx < nm
             mem_o = thornk.get_composite_member(c_idx, m_idx)
             src_file = thornk.resolve_source_path(root_dir, t_scope, mem_o)
-            decompile.add_target_source(qualified_tgt, src_file)
+            if str.length(src_file) > 0
+                decompile.add_target_source(qualified_tgt, src_file)
+            end
             m_idx = m_idx + 1
         end
 
-        if is_mod == 1
-            decompile.add_command_edge(qualified_tgt, "ld -r -o $out $in", "")
-        end
 
         c_idx = c_idx + 1
     end
@@ -40,7 +39,9 @@ fn resolve_direct_objects(makefile_path, scope, root_dir)
         while d_idx < nd
             mem_o = thornk.get_direct_member(d_idx)
             src_file = thornk.resolve_source_path(root_dir, scope, mem_o)
-            decompile.add_target_source(tgt, src_file)
+            if str.length(src_file) > 0
+                decompile.add_target_source(tgt, src_file)
+            end
             d_idx = d_idx + 1
         end
     end
