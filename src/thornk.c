@@ -765,3 +765,145 @@ int is_spec_output(void) {
     if (l >= 6 && strcmp(g_out_file + l - 6, ".thorn") == 0) return 1;
     return 0;
 }
+
+int postprocess_vmlinux(PithValue *ninja_path_val, PithValue *kernel_dir_val, PithValue *arch_val) {
+    if (!ninja_path_val) return 0;
+    const char *ninja_path = pithStringData(ninja_path_val);
+    const char *kdir = kernel_dir_val ? pithStringData(kernel_dir_val) : ".";
+    const char *arch = arch_val ? pithStringData(arch_val) : "x86";
+
+    FILE *fp = fopen(ninja_path, "r");
+    if (!fp) return 0;
+
+    fseek(fp, 0, SEEK_END);
+    long sz = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *buf = malloc(sz + 1);
+    if (!buf) {
+        fclose(fp);
+        return 0;
+    }
+    size_t r = fread(buf, 1, sz, fp);
+    buf[r] = '\0';
+    fclose(fp);
+
+    /* Collect all built-in.a.a archive targets */
+    /* Target format: build <prefix>.../built-in.a.a: ar ... */
+    char *builtins[4096];
+    int nbuiltins = 0;
+
+    char *line = buf;
+    while (*line) {
+        char *next = strchr(line, '\n');
+        if (next) *next = '\0';
+
+        if (strncmp(line, "build ", 6) == 0 && strstr(line, "built-in.a.a: ar ")) {
+            char *colon = strchr(line, ':');
+            if (colon && nbuiltins < 4096) {
+                *colon = '\0';
+                char *target = line + 6;
+                while (*target == ' ') target++;
+                builtins[nbuiltins++] = strdup(target);
+            }
+        }
+
+        if (!next) break;
+        line = next + 1;
+    }
+
+    /* Only postprocess if there are built-in.a.a targets and vmlinux.lds.S exists */
+    char lds_src[1024];
+    snprintf(lds_src, sizeof(lds_src), "%s/arch/%s/kernel/vmlinux.lds.S", kdir, arch);
+    if (nbuiltins == 0 || access(lds_src, F_OK) != 0) {
+        for (int i = 0; i < nbuiltins; i++) free(builtins[i]);
+        free(buf);
+        return 0;
+    }
+
+    /* Re-read original file and strip original 'default ...' line if any */
+    fp = fopen(ninja_path, "r");
+    if (!fp) {
+        for (int i = 0; i < nbuiltins; i++) free(builtins[i]);
+        free(buf);
+        return 0;
+    }
+
+    char *out_buf = malloc(sz + 1024 * 1024);
+    if (!out_buf) {
+        fclose(fp);
+        for (int i = 0; i < nbuiltins; i++) free(builtins[i]);
+        free(buf);
+        return 0;
+    }
+    out_buf[0] = '\0';
+    size_t out_len = 0;
+
+    char line_buf[8192];
+    while (fgets(line_buf, sizeof(line_buf), fp)) {
+        if (strncmp(line_buf, "default ", 8) == 0) {
+            continue; /* Strip default line */
+        }
+        size_t llen = strlen(line_buf);
+        memcpy(out_buf + out_len, line_buf, llen);
+        out_len += llen;
+        out_buf[out_len] = '\0';
+    }
+    fclose(fp);
+
+    /* Format cpp_lds rule, arch/x86/kernel/vmlinux.lds edge, link_vmlinux rule, and vmlinux target */
+    char append_buf[1024 * 1024];
+    size_t alen = 0;
+
+    alen += snprintf(append_buf + alen, sizeof(append_buf) - alen,
+        "\n# --- vmlinux linking & linker script preprocessing ---\n"
+        "rule cpp_lds\n"
+        "  command = $cc -E -P -C -Ux86 -D__ASSEMBLY__ -DLINKER_SCRIPT "
+        "-I %s/include -I %s/include/uapi -I %s/arch/%s/include -I %s/arch/%s/include/uapi "
+        "-I %s/arch/%s/include/generated -I %s/arch/%s/include/generated/uapi -I %s/include/generated/uapi "
+        "-I include -I include/uapi -I arch/%s/include -I arch/%s/include/uapi "
+        "-I arch/%s/include/generated -I arch/%s/include/generated/uapi -I include/generated/uapi "
+        "-imacros %s/include/generated/autoconf.h $in -o $out\n"
+        "  description = LDS $out\n\n",
+        kdir, kdir, kdir, arch, kdir, arch,
+        kdir, arch, kdir, arch, kdir,
+        arch, arch,
+        arch, arch,
+        kdir);
+
+    alen += snprintf(append_buf + alen, sizeof(append_buf) - alen,
+        "build arch/%s/kernel/vmlinux.lds: cpp_lds %s/arch/%s/kernel/vmlinux.lds.S\n\n",
+        arch, kdir, arch);
+
+    alen += snprintf(append_buf + alen, sizeof(append_buf) - alen,
+        "rule link_vmlinux\n"
+        "  command = ld -m elf_x86_64 -z max-page-size=0x200000 --whole-archive $in --no-whole-archive -T $lds -o $out\n"
+        "  description = LINK $out\n\n");
+
+    alen += snprintf(append_buf + alen, sizeof(append_buf) - alen,
+        "build vmlinux: link_vmlinux");
+
+    for (int i = 0; i < nbuiltins; i++) {
+        alen += snprintf(append_buf + alen, sizeof(append_buf) - alen, " %s", builtins[i]);
+    }
+
+    alen += snprintf(append_buf + alen, sizeof(append_buf) - alen,
+        " || arch/%s/kernel/vmlinux.lds\n"
+        "  lds = arch/%s/kernel/vmlinux.lds\n\n"
+        "default vmlinux\n",
+        arch, arch);
+
+    /* Write back updated ninja file */
+    fp = fopen(ninja_path, "w");
+    if (fp) {
+        fputs(out_buf, fp);
+        fputs(append_buf, fp);
+        fclose(fp);
+    }
+
+    for (int i = 0; i < nbuiltins; i++) free(builtins[i]);
+    free(buf);
+    free(out_buf);
+    return 1;
+}
+

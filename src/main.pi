@@ -60,6 +60,23 @@ decompile.inject_cflag("*", "-ffreestanding")
 decompile.inject_cflag("*", "-fno-strict-aliasing")
 decompile.inject_cflag("*", "-mno-red-zone")
 decompile.inject_cflag("*", "-O2")
+decompile.inject_cflag("*", "-std=gnu11")
+decompile.inject_cflag("*", "-fshort-wchar")
+
+# Forced includes for freestanding kernel builds
+if fs.exists(kernel_dir + "/include/linux/compiler-version.h") == 1
+    decompile.inject_cflag("*", "-include" + kernel_dir + "/include/linux/compiler-version.h")
+end
+if fs.exists(kernel_dir + "/include/linux/kconfig.h") == 1
+    decompile.inject_cflag("*", "-include" + kernel_dir + "/include/linux/kconfig.h")
+end
+if fs.exists(kernel_dir + "/include/linux/compiler_types.h") == 1
+    decompile.inject_cflag("*", "-include" + kernel_dir + "/include/linux/compiler_types.h")
+end
+if fs.exists(kernel_dir + "/init/utsversion-tmp.h") == 1
+    decompile.inject_cflag("*", "-include" + kernel_dir + "/init/utsversion-tmp.h")
+end
+
 
 # Global INCLUDES
 decompile.inject_include("*", "include")
@@ -68,6 +85,9 @@ decompile.inject_include("*", kernel_dir + "/include")
 decompile.inject_include("*", kernel_dir + "/include/uapi")
 decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include")
 decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/uapi")
+decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/generated")
+decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/generated/uapi")
+decompile.inject_include("*", kernel_dir + "/include/generated/uapi")
 
 # Step 3: Run recursive walker from kernel root (or single file if given file)
 if fs.exists(kernel_dir + "/Makefile") == 1
@@ -89,9 +109,11 @@ if is_spec == 1
     fs.writeFile(out_file, spec)
 else
     decompile.emit_ninja_file(out_file)
+    thornk.postprocess_vmlinux(out_file, kernel_dir, arch)
 end
 
 # Step 5: Print generation stats
 total_targets = decompile.target_count()
 print "thornk: successfully generated " + out_file
 thornk.print_stat("total targets: ", total_targets)
+
