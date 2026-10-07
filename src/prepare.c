@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dirent.h>
 #include "include/prepare.h"
 
 int g_is_prepare_cmd = 0;
@@ -120,6 +121,7 @@ static int prepare_autoconf(const char *kdir) {
         }
     }
 
+    fprintf(out, "#ifndef CONFIG_BUILD_SALT\n#define CONFIG_BUILD_SALT \"\"\n#endif\n");
     fprintf(out, "\n#endif /* __LINUX_AUTOCONF_H__ */\n");
     fclose(in);
     fclose(out);
@@ -199,7 +201,16 @@ static int prepare_version_headers(const char *kdir, const char *arch) {
         fclose(cf);
     }
 
-    printf("thornk: generated version, utsversion, and compile headers\n");
+    /* 4. utsrelease.h */
+    char relpath[512];
+    snprintf(relpath, sizeof(relpath), "%s/include/generated/utsrelease.h", kdir);
+    FILE *rf = fopen(relpath, "w");
+    if (rf) {
+        fprintf(rf, "#define UTS_RELEASE \"%d.%d.%d\"\n", version, patchlevel, sublevel);
+        fclose(rf);
+    }
+
+    printf("thornk: generated version, utsversion, utsrelease, and compile headers\n");
     return 0;
 }
 
@@ -370,6 +381,41 @@ static int prepare_asm_offsets_h(const char *kdir, const char *arch, const char 
     return 0;
 }
 
+static void gen_asm_wrappers(const char *src_dir, const char *arch_dir, const char *gen_dir, const char *prefix) {
+    DIR *d = opendir(src_dir);
+    if (!d) return;
+    mkdir_p(gen_dir);
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        if (!strstr(de->d_name, ".h")) continue;
+        char arch_file[512], gen_file[512];
+        snprintf(arch_file, sizeof(arch_file), "%s/%s", arch_dir, de->d_name);
+        snprintf(gen_file, sizeof(gen_file), "%s/%s", gen_dir, de->d_name);
+        if (access(arch_file, F_OK) != 0 && access(gen_file, F_OK) != 0) {
+            FILE *f = fopen(gen_file, "w");
+            if (f) {
+                fprintf(f, "#include <%s/%s>\n", prefix, de->d_name);
+                fclose(f);
+            }
+        }
+    }
+    closedir(d);
+}
+
+static int prepare_asm_wrappers(const char *kdir, const char *arch) {
+    char src[512], adir[512], gdir[512];
+    snprintf(src, sizeof(src), "%s/include/asm-generic", kdir);
+    snprintf(adir, sizeof(adir), "%s/arch/%s/include/asm", kdir, arch);
+    snprintf(gdir, sizeof(gdir), "%s/arch/%s/include/generated/asm", kdir, arch);
+    gen_asm_wrappers(src, adir, gdir, "asm-generic");
+
+    snprintf(src, sizeof(src), "%s/include/uapi/asm-generic", kdir);
+    snprintf(adir, sizeof(adir), "%s/arch/%s/include/uapi/asm", kdir, arch);
+    snprintf(gdir, sizeof(gdir), "%s/arch/%s/include/generated/uapi/asm", kdir, arch);
+    gen_asm_wrappers(src, adir, gdir, "asm-generic");
+    return 0;
+}
+
 int thornk_prepare(const char *kdir, const char *arch, bool defconfig) {
     if (!kdir || !*kdir) kdir = ".";
     if (!arch || !*arch) arch = "x86";
@@ -387,6 +433,7 @@ int thornk_prepare(const char *kdir, const char *arch, bool defconfig) {
     prepare_version_headers(kdir, arch);
     prepare_bounds_h(kdir, arch, cc);
     prepare_asm_offsets_h(kdir, arch, cc);
+    prepare_asm_wrappers(kdir, arch);
 
     printf("thornk: successfully prepared kernel headers\n");
     return 0;
