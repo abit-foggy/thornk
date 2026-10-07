@@ -34,6 +34,11 @@ jobs:
           sudo install -m 755 vendor/thorn/vendor/pith/pith /usr/local/bin/pith
           sudo mkdir -p /usr/local/lib/pith/runtime
           sudo install -m 644 vendor/thorn/vendor/pith/runtime/libruntime.a /usr/local/lib/pith/runtime/libruntime.a
+          sudo mkdir -p /usr/local/lib/pith/tcc/include
+          sudo cp -r vendor/thorn/vendor/pith/vendor/tcc/include/* /usr/local/lib/pith/tcc/include/
+          if [ -f vendor/thorn/vendor/pith/vendor/tcc/libtcc1.a ]; then
+            sudo install -m 644 vendor/thorn/vendor/pith/vendor/tcc/libtcc1.a /usr/local/lib/pith/tcc/libtcc1.a
+          fi
 
       - name: Discover Upstream LTS Tag
         id: lts-tag
