@@ -1,3 +1,4 @@
 [submodule "vendor/thorn"]
 	path = vendor/thorn
 	url = https://github.com/abit-foggy/thorn.git
+	branch = v1.0
