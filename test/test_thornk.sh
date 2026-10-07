@@ -88,5 +88,47 @@ legacy_count_after2=$(find "$CLEAN_DIR2" -name "Makefile*" -o -name "Kbuild*" | 
 [ "$legacy_count_after2" -eq 0 ] && ok "--clean-only removed all legacy files on demand"
 rm -rf "$CLEAN_DIR2"
 
+# 11. Test native prepare subcommand
+PREP_DIR=$(mktemp -d /tmp/thornk_prep_XXXXXX)
+mkdir -p "$PREP_DIR/arch/x86/configs" "$PREP_DIR/kernel" "$PREP_DIR/arch/x86/kernel"
+cat << "EOF" > "$PREP_DIR/Makefile"
+VERSION = 6
+PATCHLEVEL = 12
+SUBLEVEL = 4
+EOF
+cat << "EOF" > "$PREP_DIR/arch/x86/configs/x86_64_defconfig"
+CONFIG_64BIT=y
+CONFIG_SMP=y
+CONFIG_TEST_MOD=m
+CONFIG_LOCALVERSION="-thornk"
+CONFIG_HEX=0x123
+CONFIG_NUM=456
+EOF
+cat << "EOF" > "$PREP_DIR/kernel/bounds.c"
+void f(void) { __asm__ volatile("\n->NR_PAGEFLAGS $24 __NR_PAGEFLAGS\n"); }
+EOF
+cat << "EOF" > "$PREP_DIR/arch/x86/kernel/asm-offsets.c"
+void f(void) { __asm__ volatile("\n->TASK_STATE $0 offsetof(struct task_struct, __state)\n"); }
+EOF
+
+"$DIR/thornk" prepare "$PREP_DIR" --defconfig --arch x86 > /dev/null 2>&1
+
+[ -f "$PREP_DIR/.config" ] && ok "thornk prepare creates .config from defconfig"
+[ -f "$PREP_DIR/include/generated/autoconf.h" ] && ok "thornk prepare generates include/generated/autoconf.h"
+grep -q '#define CONFIG_64BIT 1' "$PREP_DIR/include/generated/autoconf.h" && ok "autoconf.h contains boolean CONFIG_64BIT"
+grep -q '#define CONFIG_TEST_MOD_MODULE 1' "$PREP_DIR/include/generated/autoconf.h" && ok "autoconf.h contains modular CONFIG_TEST_MOD_MODULE"
+grep -q '#define CONFIG_LOCALVERSION "-thornk"' "$PREP_DIR/include/generated/autoconf.h" && ok "autoconf.h contains string CONFIG_LOCALVERSION"
+[ -f "$PREP_DIR/include/generated/uapi/linux/version.h" ] && ok "thornk prepare generates uapi/linux/version.h"
+grep -q '#define LINUX_VERSION_CODE 396292' "$PREP_DIR/include/generated/uapi/linux/version.h" && ok "version.h calculates correct LINUX_VERSION_CODE"
+[ -f "$PREP_DIR/include/generated/utsversion.h" ] && ok "thornk prepare generates utsversion.h"
+[ -f "$PREP_DIR/include/generated/compile.h" ] && ok "thornk prepare generates compile.h"
+[ -f "$PREP_DIR/include/generated/bounds.h" ] && ok "thornk prepare generates bounds.h"
+grep -q '#define NR_PAGEFLAGS 24' "$PREP_DIR/include/generated/bounds.h" && ok "bounds.h extracts offset macros"
+[ -f "$PREP_DIR/arch/x86/include/generated/asm/asm-offsets.h" ] && ok "thornk prepare generates asm-offsets.h"
+grep -q '#define TASK_STATE 0' "$PREP_DIR/arch/x86/include/generated/asm/asm-offsets.h" && ok "asm-offsets.h extracts offset macros"
+rm -rf "$PREP_DIR"
+rm -rf "$DIR/test/fixtures/mini_kernel/include" "$DIR/test/fixtures/mini_kernel/arch/x86/include"
+
 printf '\nthornk acceptance test results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
+

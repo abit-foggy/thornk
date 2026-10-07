@@ -5,7 +5,7 @@ import "thornk.c"
 # Ingest CLI arguments
 argc = proc.argCount()
 if argc < 2
-    print "Usage: thornk <kernel_source_dir> [--config <path>] [--arch <arch>] [--out <file>]"
+    print "Usage: thornk [prepare] <kernel_source_dir> [--config <path>] [--arch <arch>] [--out <file>] [--defconfig]"
     proc.exit(1)
 end
 
@@ -18,6 +18,11 @@ end
 
 thornk.process_cli_args()
 
+if thornk.is_prepare_cmd() == 1
+    thornk.run_prepare()
+    proc.exit(0)
+end
+
 if thornk.is_clean_only() == 1
     thornk.process_legacy_cleanup()
     proc.exit(0)
@@ -27,6 +32,9 @@ kernel_dir = thornk.get_kernel_dir()
 config_path = thornk.get_config_path()
 arch = thornk.get_arch()
 out_file = thornk.get_out_file()
+
+# Auto-prepare headers if missing
+thornk.auto_prepare()
 
 print "thornk: configuring Linux kernel build"
 print "kernel root: " + kernel_dir

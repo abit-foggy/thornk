@@ -3,6 +3,7 @@
 #include "include/resolve.h"
 #include "include/post.h"
 #include "include/clean.h"
+#include "include/prepare.h"
 
 /* CLI configuration */
 char g_kernel_dir[512] = ".";
@@ -34,6 +35,24 @@ void add_cli_arg(PithValue *val) {
 
 void process_cli_args(void) {
     if (g_ncli_args < 1) return;
+
+    /* Check for 'prepare' subcommand: thornk prepare [kdir] [--arch <arch>] [--defconfig] */
+    if (strcmp(g_cli_args[0], "prepare") == 0) {
+        g_is_prepare_cmd = 1;
+        strncpy(g_prepare_arch, "x86", sizeof(g_prepare_arch) - 1);
+        strncpy(g_prepare_kdir, ".", sizeof(g_prepare_kdir) - 1);
+        for (int i = 1; i < g_ncli_args; i++) {
+            if (strcmp(g_cli_args[i], "--defconfig") == 0) {
+                g_prepare_defconfig = 1;
+            } else if (strcmp(g_cli_args[i], "--arch") == 0 && i + 1 < g_ncli_args) {
+                strncpy(g_prepare_arch, g_cli_args[++i], sizeof(g_prepare_arch) - 1);
+            } else if (g_cli_args[i][0] != '-') {
+                strncpy(g_prepare_kdir, g_cli_args[i], sizeof(g_prepare_kdir) - 1);
+            }
+        }
+        return;
+    }
+
     strncpy(g_kernel_dir, g_cli_args[0], sizeof(g_kernel_dir) - 1);
     snprintf(g_config_path, sizeof(g_config_path), "%s/.config", g_kernel_dir);
     strncpy(g_arch, "x86", sizeof(g_arch) - 1);
@@ -217,10 +236,24 @@ int process_legacy_cleanup(void) {
     return clean_process_legacy(g_kernel_dir);
 }
 
+/* Prepare delegates */
+int is_prepare_cmd(void) {
+    return prepare_is_cmd();
+}
+
+int run_prepare(void) {
+    return prepare_run();
+}
+
+int auto_prepare(void) {
+    return prepare_auto_if_needed(g_kernel_dir, g_arch);
+}
+
 /* Modular units included in translation */
 #include "config.c"
 #include "scan.c"
 #include "resolve.c"
 #include "post.c"
 #include "clean.c"
+#include "prepare.c"
 
