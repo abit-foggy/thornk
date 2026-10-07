@@ -1,0 +1,125 @@
+name: Stable Release
+
+on:
+  push:
+    branches: [ stable ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout thornk
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libelf-dev libssl-dev bc bison flex build-essential
+          git clone --depth 1 https://github.com/michaelforney/samurai /tmp/samurai
+          make -C /tmp/samurai
+          sudo install -m 755 /tmp/samurai/samu /usr/local/bin/samu
+
+      - name: Build Thorn & Pith Host Binaries
+        run: |
+          make -C vendor/thorn
+          sudo install -m 755 vendor/thorn/out/thorn /usr/local/bin/thorn
+          sudo install -m 755 vendor/thorn/vendor/pith/pith /usr/local/bin/pith
+          sudo mkdir -p /usr/local/lib/pith/runtime
+          sudo install -m 644 vendor/thorn/vendor/pith/runtime/libruntime.a /usr/local/lib/pith/runtime/libruntime.a
+          sudo mkdir -p /usr/local/lib/pith/tcc/include
+          sudo cp -r vendor/thorn/vendor/pith/vendor/tcc/include/* /usr/local/lib/pith/tcc/include/
+          if [ -f vendor/thorn/vendor/pith/vendor/tcc/libtcc1.a ]; then
+            sudo install -m 644 vendor/thorn/vendor/pith/vendor/tcc/libtcc1.a /usr/local/lib/pith/tcc/libtcc1.a
+          fi
+
+      - name: Build Thornk
+        run: make build
+
+      - name: Run Test Suite
+        run: make test
+
+      - name: Package Stable Artifacts
+        run: |
+          mkdir -p dist
+          install -m 0755 bin/thornk dist/thornk
+          STAGE="thornk-x86_64-linux"
+          mkdir -p "$STAGE"
+          install -m 0755 bin/thornk "$STAGE/thornk"
+          install -m 0644 LICENSE "$STAGE/LICENSE" 2>/dev/null || true
+          install -m 0644 README.md "$STAGE/README.md" 2>/dev/null || true
+          tar -czf "dist/thornk-x86_64-linux.tar.gz" -C "$STAGE" .
+          rm -rf "$STAGE"
+
+      - name: Upload Stable Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-stable
+          path: dist/*
+
+  release:
+    name: publish stable release
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "thornk" -o -name "*.tar.gz" \) -exec cp {} release-assets/ \;
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Prune Non-stable Release Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for asset in $(gh release view stable --json assets --jq '.assets[].name' 2>/dev/null || true); do
+            case "$asset" in
+              thornk|*.tar.gz|SHA256SUMS.txt) ;;
+              *)
+                echo "Removing obsolete release asset: $asset"
+                gh release delete-asset stable "$asset" -y || true
+                ;;
+            esac
+          done
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: stable
+          name: "Thornk Stable Release"
+          prerelease: false
+          draft: false
+          make_latest: true
+          body: |
+            Official rolling stable release for thornk.
+
+            ### Quick Install
+            ```bash
+            # Change TAG=stable to TAG=nightly for the nightly build
+            curl -fsSL https://raw.githubusercontent.com/abit-foggy/thornk/main/install.sh | TAG=stable bash
+            ```
+
+            ### Verification
+            Verify downloaded archive/binary integrity using the included `SHA256SUMS.txt`:
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+          files: |
+            release-assets/*
