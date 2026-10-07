@@ -13,7 +13,43 @@ OUT_DIR="$DIR/out"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
-printf '== testing thornk Linux Kbuild conversion ==\n'
+printf '== testing thornk Kbuild conversion ==\n'
+
+# 0. Standalone single Kbuild file conversion
+SCRATCH="$(mktemp -d /tmp/thornk_single_XXXXXX)"
+"$DIR/thornk" "$DIR/test/fixtures/Kbuild.sample" "$SCRATCH/thorn.build" > "$SCRATCH/run.log" 2>&1
+[ -f "$SCRATCH/thorn.build" ] && ok "thornk emits thorn.build from single Kbuild file"
+grep -q 'engine.project("linux_subsystem")' "$SCRATCH/thorn.build" \
+    && ok "thorn.build sets project name"
+grep -q 'engine.add_target("e1000e", engine.static_lib)' "$SCRATCH/thorn.build" \
+    && ok "thorn.build adds e1000e composite module as static_lib"
+grep -q 'engine.add_source("e1000e", "netdev.c")' "$SCRATCH/thorn.build" \
+    && ok "thorn.build contains composite module sources"
+grep -q 'engine.add_include("e1000e", "include/uapi")' "$SCRATCH/thorn.build" \
+    && ok "thorn.build contains injected include directories"
+grep -q 'engine.add_cflag("e1000e", "-D__KERNEL__")' "$SCRATCH/thorn.build" \
+    && ok "thorn.build contains injected compiler flags"
+
+if grep -q "kunit" "$SCRATCH/thorn.build" || grep -q "selftest" "$SCRATCH/thorn.build"; then
+    bad "test targets should be filtered out by hooks"
+else
+    ok "kernel test targets (kunit, selftest) successfully filtered out"
+fi
+
+THORN_BIN=""
+if command -v thorn >/dev/null 2>&1; then
+    THORN_BIN="$(command -v thorn)"
+elif [ -x "$DIR/vendor/thorn/out/thorn" ]; then
+    THORN_BIN="$DIR/vendor/thorn/out/thorn"
+elif [ -x "/home/foggy/thorn/out/thorn" ]; then
+    THORN_BIN="/home/foggy/thorn/out/thorn"
+fi
+if [ -n "$THORN_BIN" ]; then
+    (cd "$SCRATCH" && "$THORN_BIN" -f thorn.build --engine both > /dev/null 2>&1)
+    [ -f "$SCRATCH/build.ninja" ] && ok "thorn generates build.ninja from thornk output"
+    [ -f "$SCRATCH/Makefile" ] && ok "thorn generates Makefile from thornk output"
+fi
+rm -rf "$SCRATCH"
 
 # 1. Build and invoke thornk on mini_kernel fixture
 "$DIR/thornk" "$DIR/test/fixtures/mini_kernel" \

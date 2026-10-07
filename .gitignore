@@ -9,3 +9,4 @@ thornk_bin
 *.o
 *.a
 *.so
+test/out/
