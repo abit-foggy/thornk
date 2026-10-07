@@ -1,8 +1,9 @@
 #!/bin/sh
-# test/test_thornk.sh - Verification script for thornk Kbuild converter
+# tests/test_thornk.sh - Verification script for thornk Kbuild converter
 set -e
 
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
+RUN_CMD="$DIR/run.sh"
 PASS=0
 FAIL=0
 
@@ -17,7 +18,7 @@ printf '== testing thornk Kbuild conversion ==\n'
 
 # 0. Standalone single Kbuild file conversion
 SCRATCH="$(mktemp -d /tmp/thornk_single_XXXXXX)"
-"$DIR/thornk" "$DIR/test/fixtures/Kbuild.sample" "$SCRATCH/thorn.build" > "$SCRATCH/run.log" 2>&1
+"$RUN_CMD" "$DIR/tests/fixtures/Kbuild.sample" "$SCRATCH/thorn.build" > "$SCRATCH/run.log" 2>&1
 [ -f "$SCRATCH/thorn.build" ] && ok "thornk emits thorn.build from single Kbuild file"
 grep -q 'engine.project("linux_subsystem")' "$SCRATCH/thorn.build" \
     && ok "thorn.build sets project name"
@@ -52,8 +53,8 @@ fi
 rm -rf "$SCRATCH"
 
 # 1. Build and invoke thornk on mini_kernel fixture
-"$DIR/thornk" "$DIR/test/fixtures/mini_kernel" \
-    --config "$DIR/test/fixtures/mini_kernel/.config" \
+"$RUN_CMD" "$DIR/tests/fixtures/mini_kernel" \
+    --config "$DIR/tests/fixtures/mini_kernel/.config" \
     --arch x86 \
     --out "$OUT_DIR/build.ninja" > "$OUT_DIR/thornk.log" 2>&1
 
@@ -105,11 +106,11 @@ grep -q 'e1000e' "$OUT_DIR/build.ninja" \
 
 # 9. Test legacy Kbuild/Makefile removal via --clean-legacy
 CLEAN_DIR=$(mktemp -d /tmp/thornk_clean_XXXXXX)
-cp -r "$DIR/test/fixtures/mini_kernel/"* "$CLEAN_DIR/"
+cp -r "$DIR/tests/fixtures/mini_kernel/"* "$CLEAN_DIR/"
 legacy_count_before=$(find "$CLEAN_DIR" -name "Makefile*" -o -name "Kbuild*" | wc -l)
 [ "$legacy_count_before" -gt 0 ] && ok "fixture copy has $legacy_count_before legacy files"
 
-"$DIR/thornk" "$CLEAN_DIR" --clean-legacy --out "$CLEAN_DIR/build.ninja" > /dev/null 2>&1
+"$RUN_CMD" "$CLEAN_DIR" --clean-legacy --out "$CLEAN_DIR/build.ninja" > /dev/null 2>&1
 legacy_count_after=$(find "$CLEAN_DIR" -name "Makefile*" -o -name "Kbuild*" | wc -l)
 [ "$legacy_count_after" -eq 0 ] && ok "--clean-legacy removed all legacy files from tree"
 [ -f "$CLEAN_DIR/thorn.build" ] && [ -f "$CLEAN_DIR/build.ninja" ] \
@@ -118,8 +119,8 @@ rm -rf "$CLEAN_DIR"
 
 # 10. Test later cleanup via --clean-only
 CLEAN_DIR2=$(mktemp -d /tmp/thornk_clean_XXXXXX)
-cp -r "$DIR/test/fixtures/mini_kernel/"* "$CLEAN_DIR2/"
-"$DIR/thornk" "$CLEAN_DIR2" --clean-only > /dev/null 2>&1
+cp -r "$DIR/tests/fixtures/mini_kernel/"* "$CLEAN_DIR2/"
+"$RUN_CMD" "$CLEAN_DIR2" --clean-only > /dev/null 2>&1
 legacy_count_after2=$(find "$CLEAN_DIR2" -name "Makefile*" -o -name "Kbuild*" | wc -l)
 [ "$legacy_count_after2" -eq 0 ] && ok "--clean-only removed all legacy files on demand"
 rm -rf "$CLEAN_DIR2"
@@ -147,7 +148,7 @@ cat << "EOF" > "$PREP_DIR/arch/x86/kernel/asm-offsets.c"
 void f(void) { __asm__ volatile("\n->TASK_STATE $0 offsetof(struct task_struct, __state)\n"); }
 EOF
 
-"$DIR/thornk" prepare "$PREP_DIR" --defconfig --arch x86 > /dev/null 2>&1
+"$RUN_CMD" prepare "$PREP_DIR" --defconfig --arch x86 > /dev/null 2>&1
 
 [ -f "$PREP_DIR/.config" ] && ok "thornk prepare creates .config from defconfig"
 [ -f "$PREP_DIR/include/generated/autoconf.h" ] && ok "thornk prepare generates include/generated/autoconf.h"
@@ -163,7 +164,7 @@ grep -q '#define NR_PAGEFLAGS 24' "$PREP_DIR/include/generated/bounds.h" && ok "
 [ -f "$PREP_DIR/arch/x86/include/generated/asm/asm-offsets.h" ] && ok "thornk prepare generates asm-offsets.h"
 grep -q '#define TASK_STATE 0' "$PREP_DIR/arch/x86/include/generated/asm/asm-offsets.h" && ok "asm-offsets.h extracts offset macros"
 rm -rf "$PREP_DIR"
-rm -rf "$DIR/test/fixtures/mini_kernel/include" "$DIR/test/fixtures/mini_kernel/arch/x86/include"
+rm -rf "$DIR/tests/fixtures/mini_kernel/include" "$DIR/tests/fixtures/mini_kernel/arch/x86/include"
 
 printf '\nthornk acceptance test results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -1,5 +1,5 @@
 #!/bin/sh
-# thornk - Kbuild to Ninja / thorn.build converter
+# run.sh - Development runner for thornk
 set -e
 
 DIR="$(cd "$(dirname "$0")" && pwd)"

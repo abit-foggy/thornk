@@ -7,10 +7,10 @@ build:
 	pith build src/kconfig.pi src/composite.pi src/walker.pi src/main.pi -o bin/thornk
 
 run: build
-	./thornk test/fixtures/Kbuild.sample thorn.build
+	./run.sh tests/fixtures/Kbuild.sample thorn.build
 
 test: build
-	./test/test_thornk.sh
+	./tests/test_thornk.sh
 
 clean:
-	rm -rf bin out thorn.build build.ninja Makefile.posix thornk_bin .ninja_deps .ninja_log test/out
+	rm -rf bin out thorn.build build.ninja Makefile.posix thornk_bin .ninja_deps .ninja_log tests/out
