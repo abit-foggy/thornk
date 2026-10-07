@@ -32,6 +32,8 @@ jobs:
           make -C vendor/thorn
           sudo install -m 755 vendor/thorn/out/thorn /usr/local/bin/thorn
           sudo install -m 755 vendor/thorn/vendor/pith/pith /usr/local/bin/pith
+          sudo mkdir -p /usr/local/lib/pith/runtime
+          sudo install -m 644 vendor/thorn/vendor/pith/runtime/libruntime.a /usr/local/lib/pith/runtime/libruntime.a
 
       - name: Discover Upstream LTS Tag
         id: lts-tag
