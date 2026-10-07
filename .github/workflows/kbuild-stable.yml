@@ -82,10 +82,12 @@ jobs:
       - name: Convert Linux Stable Tree to Ninja via thornk
         if: steps.cache-check.outputs.cache-hit != 'true'
         run: |
+          mkdir -p /tmp/linux_build
           ./bin/thornk /tmp/linux \
             --config /tmp/linux/.config \
             --arch x86 \
-            --out /tmp/linux_build/build.ninja
+            --out /tmp/linux_build/build.ninja \
+            --keep-legacy
 
       - name: Verify build.ninja via Samurai Dry-run
         if: steps.cache-check.outputs.cache-hit != 'true'
