@@ -56,7 +56,11 @@ fi
 
 # Locate existing installed binary if any
 INSTALLED_BIN=""
-if command -v thornk >/dev/null 2>&1; then
+if [ -n "$PREFIX" ]; then
+    if [ -f "$TARGET_DIR/thornk" ]; then
+        INSTALLED_BIN="$TARGET_DIR/thornk"
+    fi
+elif command -v thornk >/dev/null 2>&1; then
     INSTALLED_BIN="$(command -v thornk)"
 elif [ -f "$TARGET_DIR/thornk" ]; then
     INSTALLED_BIN="$TARGET_DIR/thornk"
