@@ -1,5 +1,5 @@
 # kconfig.pi - .config reader and variable evaluator for thornk
-import "/home/foggy/thornk/src/thornk.c"
+import "thornk.c"
 
 fn parse_kconfig(path)
     count = thornk.parse_kconfig_file(path)

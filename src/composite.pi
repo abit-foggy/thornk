@@ -1,6 +1,6 @@
 # composite.pi - Composite object and module dependency tracking for thornk
-import "/home/foggy/thorn/src/decompile.c"
-import "/home/foggy/thornk/src/thornk.c"
+import "vendor/thorn/src/decompile.c"
+import "thornk.c"
 
 fn resolve_composite_objects(makefile_path, scope, root_dir)
     n = thornk.scan_composite_objects(makefile_path, scope)

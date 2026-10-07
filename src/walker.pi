@@ -1,6 +1,6 @@
 # walker.pi - Recursive Kbuild subdirectory traversal for thornk
-import "/home/foggy/thorn/src/decompile.c"
-import "/home/foggy/thornk/src/thornk.c"
+import "vendor/thorn/src/decompile.c"
+import "thornk.c"
 
 fn walk_directory(root_dir, current_scope)
     visited = thornk.is_dir_visited(current_scope)
@@ -14,11 +14,11 @@ fn walk_directory(root_dir, current_scope)
         return 0
     end
 
-    # Ingest direct objects (built-in.a)
-    resolve_direct_objects(makefile_path, current_scope, root_dir)
-
-    # Ingest composite objects (-objs / -y)
+    # Ingest composite objects (-objs / -y) first so composites are registered
     resolve_composite_objects(makefile_path, current_scope, root_dir)
+
+    # Ingest direct objects (built-in.a), expanding any composite members
+    resolve_direct_objects(makefile_path, current_scope, root_dir)
 
     # Scan and traverse subdirectories
     nsub = thornk.scan_kbuild_subdirs(makefile_path, current_scope)
@@ -39,5 +39,10 @@ end
 
 fn walk_kbuild_tree(root_dir, kmap)
     walk_directory(root_dir, "")
+    walk_directory(root_dir, "lib")
+    walk_directory(root_dir, "arch/x86/lib")
+    walk_directory(root_dir, "arch/x86/pci")
+    walk_directory(root_dir, "arch/x86/power")
+    walk_directory(root_dir, "arch/x86/video")
     return 1
 end

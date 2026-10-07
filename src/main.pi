@@ -1,6 +1,6 @@
 # main.pi - CLI driver and compiler setup for thornk
-import "/home/foggy/thorn/src/decompile.c"
-import "/home/foggy/thornk/src/thornk.c"
+import "vendor/thorn/src/decompile.c"
+import "thornk.c"
 
 # Ingest CLI arguments
 argc = proc.argCount()
@@ -17,6 +17,11 @@ while a_idx < argc
 end
 
 thornk.process_cli_args()
+
+if thornk.is_clean_only() == 1
+    thornk.process_legacy_cleanup()
+    proc.exit(0)
+end
 
 kernel_dir = thornk.get_kernel_dir()
 config_path = thornk.get_config_path()
@@ -47,8 +52,30 @@ decompile.set_ar("ar")
 # Step 2: Configure filters and freestanding kernel flags
 decompile.ignore_target("test_*")
 decompile.ignore_target("*_test")
-decompile.ignore_target("kunit_*")
+decompile.ignore_target("*kunit*")
 decompile.ignore_target("selftest_*")
+decompile.ignore_target("*drivers/clk/ti*")
+decompile.ignore_target("*drivers/video/fbdev/omap*")
+decompile.ignore_target("*capsule*")
+decompile.ignore_target("*kernel/up.c*")
+decompile.ignore_target("*posix-stubs.c*")
+decompile.ignore_target("*arch/x86/lib/*32*")
+decompile.ignore_target("*cmpxchg8b*")
+decompile.ignore_target("*dm-ima*")
+decompile.ignore_target("*dm-audit*")
+decompile.ignore_target("*dm-zone*")
+decompile.ignore_target("*dm-verity-fec*")
+decompile.ignore_target("*dm-verity-verify-sig*")
+decompile.ignore_target("*dm-init*")
+decompile.ignore_target("*dm-uevent*")
+decompile.ignore_target("*xhci-dbgcap*")
+decompile.ignore_target("*xhci-dbgtty*")
+decompile.ignore_target("*xhci-mvebu*")
+decompile.ignore_target("*onboard_usb_dev_pdevs*")
+decompile.ignore_target("*cpci_hotplug*")
+decompile.ignore_target("*nommu*")
+decompile.ignore_target("*bpf_crypto_skcipher*")
+
 
 decompile.strip_cflag("-fconserve-stack")
 decompile.strip_cflag("-mrecord-mcount")
@@ -59,9 +86,19 @@ decompile.inject_cflag("*", "-D__KERNEL__")
 decompile.inject_cflag("*", "-ffreestanding")
 decompile.inject_cflag("*", "-fno-strict-aliasing")
 decompile.inject_cflag("*", "-mno-red-zone")
+decompile.inject_cflag("*", "-mcmodel=kernel")
+decompile.inject_cflag("*", "-mno-sse")
+decompile.inject_cflag("*", "-mno-mmx")
+decompile.inject_cflag("*", "-mno-sse2")
+decompile.inject_cflag("*", "-mno-3dnow")
+decompile.inject_cflag("*", "-mno-avx")
+decompile.inject_cflag("*", "-fcf-protection=none")
 decompile.inject_cflag("*", "-O2")
 decompile.inject_cflag("*", "-std=gnu11")
 decompile.inject_cflag("*", "-fshort-wchar")
+decompile.inject_cflag("*i915*", "-DI915")
+decompile.inject_cflag("*acpica*", "-D_LINUX")
+decompile.inject_cflag("*acpica*", "-DBUILDING_ACPICA")
 
 # Forced includes for freestanding kernel builds
 if fs.exists(kernel_dir + "/include/linux/compiler-version.h") == 1
@@ -76,10 +113,13 @@ end
 if fs.exists(kernel_dir + "/init/utsversion-tmp.h") == 1
     decompile.inject_cflag("*", "-include" + kernel_dir + "/init/utsversion-tmp.h")
 end
+if fs.exists(kernel_dir + "/init/kbuild_modname.h") == 1
+    decompile.inject_cflag("*", "-include" + kernel_dir + "/init/kbuild_modname.h")
+end
+
 
 
 # Global INCLUDES
-decompile.inject_include("*", "include")
 decompile.inject_include("*", "include/uapi")
 decompile.inject_include("*", kernel_dir + "/include")
 decompile.inject_include("*", kernel_dir + "/include/uapi")
@@ -88,10 +128,19 @@ decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/uapi")
 decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/generated")
 decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/generated/uapi")
 decompile.inject_include("*", kernel_dir + "/include/generated/uapi")
+decompile.inject_include("*", kernel_dir + "/arch/" + arch + "/include/asm/trace")
+decompile.inject_include("*", kernel_dir + "/drivers/gpu/drm/i915")
+decompile.inject_include("*", kernel_dir + "/security/selinux/include")
+decompile.inject_include("*", kernel_dir + "/security/selinux")
+decompile.inject_include("*", kernel_dir)
 
 # Step 3: Run recursive walker from kernel root (or single file if given file)
 if fs.exists(kernel_dir + "/Makefile") == 1
     walk_kbuild_tree(kernel_dir, 0)
+    if fs.exists(kernel_dir + "/init/main.c") == 1
+        decompile.set_target_type("vmlinux", 1)
+        decompile.add_target_source("vmlinux", kernel_dir + "/init/main.c")
+    end
 else
     if fs.exists(kernel_dir + "/Kbuild") == 1
         walk_kbuild_tree(kernel_dir, 0)
@@ -107,13 +156,27 @@ is_spec = thornk.is_spec_output()
 if is_spec == 1
     spec = decompile.to_thorn()
     fs.writeFile(out_file, spec)
+    print "thornk: successfully generated " + out_file
 else
-    decompile.emit_ninja_file(out_file)
+    # 1. Write thorn.build specification
+    spec_file = thornk.get_spec_file()
+    out_dir = thornk.get_out_dir()
+    spec = decompile.to_thorn()
+    fs.writeFile(spec_file, spec)
+    print "thornk: generated " + spec_file
+
+    # 2. Invoke thorn to evaluate thorn.build and generate build.ninja
+    thornk.run_thorn(spec_file, out_dir)
+
+    # 3. Postprocess generated build.ninja for kernel vmlinux targets
     thornk.postprocess_vmlinux(out_file, kernel_dir, arch)
+    print "thornk: successfully generated " + out_file
 end
 
 # Step 5: Print generation stats
 total_targets = decompile.target_count()
-print "thornk: successfully generated " + out_file
 thornk.print_stat("total targets: ", total_targets)
+
+# Step 6: Legacy cleanup handling (prompt or flag)
+thornk.process_legacy_cleanup()
 

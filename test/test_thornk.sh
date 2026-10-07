@@ -22,6 +22,7 @@ printf '== testing thornk Linux Kbuild conversion ==\n'
     --out "$OUT_DIR/build.ninja" > "$OUT_DIR/thornk.log" 2>&1
 
 [ -f "$OUT_DIR/build.ninja" ] && ok "thornk generates out/build.ninja from mini_kernel tree"
+[ -f "$OUT_DIR/thorn.build" ] && ok "thornk generates out/thorn.build intermediate spec"
 
 # 2. Check assembly support (.S -> as_cpp rule)
 grep -q 'setup\.o: as_cpp .*setup\.S' "$OUT_DIR/build.ninja" \
@@ -61,10 +62,31 @@ grep -q 'e1000e' "$OUT_DIR/build.ninja" \
     && ok "samu executes generated out/build.ninja cleanly to completion"
 
 # 8. Verify compiled objects and archives on disk
-[ -f "$OUT_DIR/arch/x86/boot/built-in.a.a" ] \
-    && ok "arch/x86/boot/built-in.a.a archive produced on disk"
+[ -f "$OUT_DIR/arch/x86/boot/built-in.a" ] || [ -f "$OUT_DIR/arch/x86/boot/built-in.a.a" ] \
+    && ok "arch/x86/boot/built-in.a archive produced on disk"
 [ -f "$OUT_DIR/drivers/net/e1000e.a" ] || [ -f "$OUT_DIR/drivers/net/e1000e.o.a" ] \
     && ok "drivers/net/e1000e archive produced on disk"
+
+# 9. Test legacy Kbuild/Makefile removal via --clean-legacy
+CLEAN_DIR=$(mktemp -d /tmp/thornk_clean_XXXXXX)
+cp -r "$DIR/test/fixtures/mini_kernel/"* "$CLEAN_DIR/"
+legacy_count_before=$(find "$CLEAN_DIR" -name "Makefile*" -o -name "Kbuild*" | wc -l)
+[ "$legacy_count_before" -gt 0 ] && ok "fixture copy has $legacy_count_before legacy files"
+
+"$DIR/thornk" "$CLEAN_DIR" --clean-legacy --out "$CLEAN_DIR/build.ninja" > /dev/null 2>&1
+legacy_count_after=$(find "$CLEAN_DIR" -name "Makefile*" -o -name "Kbuild*" | wc -l)
+[ "$legacy_count_after" -eq 0 ] && ok "--clean-legacy removed all legacy files from tree"
+[ -f "$CLEAN_DIR/thorn.build" ] && [ -f "$CLEAN_DIR/build.ninja" ] \
+    && ok "--clean-legacy preserved generated thorn.build and build.ninja"
+rm -rf "$CLEAN_DIR"
+
+# 10. Test later cleanup via --clean-only
+CLEAN_DIR2=$(mktemp -d /tmp/thornk_clean_XXXXXX)
+cp -r "$DIR/test/fixtures/mini_kernel/"* "$CLEAN_DIR2/"
+"$DIR/thornk" "$CLEAN_DIR2" --clean-only > /dev/null 2>&1
+legacy_count_after2=$(find "$CLEAN_DIR2" -name "Makefile*" -o -name "Kbuild*" | wc -l)
+[ "$legacy_count_after2" -eq 0 ] && ok "--clean-only removed all legacy files on demand"
+rm -rf "$CLEAN_DIR2"
 
 printf '\nthornk acceptance test results: %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

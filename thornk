@@ -5,9 +5,18 @@ set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    printf 'Usage: thornk <kernel_source_dir> [--config <path>] [--arch <arch>] [--out <file>]\n'
+    printf 'Usage: thornk <kernel_source_dir> [OPTIONS]\n'
     printf '       thornk [KBUILD_FILE] [OUTPUT_SPEC]\n\n'
-    printf 'Converts Linux Kbuild trees or files to Ninja or thorn.build specifications.\n'
+    printf 'Converts Linux Kbuild trees or files to thorn.build and Ninja specifications.\n\n'
+    printf 'Options:\n'
+    printf '  --config <path>    Kernel .config path (default: <kernel_dir>/.config)\n'
+    printf '  --arch <arch>      Target architecture (default: x86)\n'
+    printf '  --out <file>       Output file (default: build.ninja)\n'
+    printf '  --spec <file>      Thorn specification file (default: <out_dir>/thorn.build)\n'
+    printf '  --clean-legacy     Remove legacy Kbuild and Makefiles from tree\n'
+    printf '  --remove-legacy    Alias for --clean-legacy\n'
+    printf '  --clean-only       Remove legacy files from tree and exit\n'
+    printf '  --keep-legacy      Keep legacy files without prompting\n'
     exit 0
 fi
 
@@ -18,7 +27,9 @@ if [ ! -f "$DIR/bin/thornk" ] || \
    [ "$DIR/src/kconfig.pi" -nt "$DIR/bin/thornk" ] || \
    [ "$DIR/src/composite.pi" -nt "$DIR/bin/thornk" ] || \
    [ "$DIR/src/walker.pi" -nt "$DIR/bin/thornk" ] || \
-   [ "$DIR/src/thornk.c" -nt "$DIR/bin/thornk" ]; then
+   [ "$DIR/src/thornk.c" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/clean.c" -nt "$DIR/bin/thornk" ] || \
+   [ "$DIR/src/post.c" -nt "$DIR/bin/thornk" ]; then
     pith build "$DIR/src/kconfig.pi" "$DIR/src/composite.pi" "$DIR/src/walker.pi" "$DIR/src/main.pi" -o "$DIR/bin/thornk" > /dev/null 2>&1
 fi
 
