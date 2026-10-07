@@ -1,5 +1,8 @@
 # thornk
 
+[![Linux LTS (6.12) Compatibility](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-lts.yml/badge.svg)](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-lts.yml)
+[![Linux Stable Compatibility](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-stable.yml/badge.svg)](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-stable.yml)
+
 Linux Kbuild to Ninja / `thorn.build` converter powered by Pith and Thorn's embedded decompiler FFI.
 
 `thornk` converts Linux kernel trees and Kbuild Makefiles into byte-deterministic Ninja build graphs (`build.ninja`) and `thorn.build` specifications. It evaluates `.config` options, resolves composite modules (`-objs`, `-y`, `-m`), handles multi-line continuations, recurses into subdirectories, recognizes native assembly (`.s` / `.S`), injects freestanding kernel flags, and filters unconfigured or test targets.

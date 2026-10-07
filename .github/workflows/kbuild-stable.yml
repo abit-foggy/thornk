@@ -1,0 +1,91 @@
+name: Linux Stable Compatibility
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 03:00 UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  test-stable:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout thornk
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y samurai libelf-dev libssl-dev bc bison flex build-essential
+
+      - name: Build Thorn & Pith Host Binaries
+        run: |
+          make -C vendor/thorn
+          sudo install -m 755 vendor/thorn/out/thorn /usr/local/bin/thorn
+          sudo install -m 755 vendor/thorn/vendor/pith/pith /usr/local/bin/pith
+
+      - name: Discover Upstream Stable Tag
+        id: stable-tag
+        run: |
+          TAG=$(git ls-remote --tags --refs https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git 'v*' \
+            | awk -F/ '{print $NF}' \
+            | grep -v -- '-rc' \
+            | sort -V \
+            | tail -n 1)
+          echo "Found latest stable release tag: $TAG"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check Verification Cache
+        id: cache-check
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kbuild-verified.tag
+          key: kbuild-stable-verified-${{ steps.stable-tag.outputs.tag }}
+
+      - name: Fetch Linux Kernel Tree
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch ${{ steps.stable-tag.outputs.tag }} \
+            https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git /tmp/linux
+
+      - name: Prepare Minimal Kernel Headers & Autoconf
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: |
+          cd /tmp/linux
+          make defconfig
+          make -j$(nproc) modules_prepare
+
+      - name: Build thornk
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: make build
+
+      - name: Run Acceptance & Unit Tests
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: make test
+
+      - name: Convert Linux Stable Tree to Ninja via thornk
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: |
+          ./bin/thornk /tmp/linux \
+            --config /tmp/linux/.config \
+            --arch x86 \
+            --out /tmp/linux_build/build.ninja
+
+      - name: Verify build.ninja via Samurai Dry-run
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: samu -n -f /tmp/linux_build/build.ninja vmlinux
+
+      - name: Compile Real Kernel Object
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: samu -f /tmp/linux_build/build.ninja init/built-in.a
+
+      - name: Save Verification Marker
+        if: steps.cache-check.outputs.cache-hit != 'true'
+        run: |
+          echo "${{ steps.stable-tag.outputs.tag }}" > /tmp/kbuild-verified.tag
