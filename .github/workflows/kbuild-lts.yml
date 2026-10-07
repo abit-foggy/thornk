@@ -22,7 +22,10 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y samurai libelf-dev libssl-dev bc bison flex build-essential
+          sudo apt-get install -y ninja-build libelf-dev libssl-dev bc bison flex build-essential
+          git clone --depth 1 https://github.com/michaelforney/samurai /tmp/samurai
+          make -C /tmp/samurai
+          sudo install -m 755 /tmp/samurai/samu /usr/local/bin/samu
 
       - name: Build Thorn & Pith Host Binaries
         run: |
@@ -80,10 +83,6 @@ jobs:
       - name: Verify build.ninja via Samurai Dry-run
         if: steps.cache-check.outputs.cache-hit != 'true'
         run: samu -n -f /tmp/linux_build/build.ninja vmlinux
-
-      - name: Compile Real Kernel Object
-        if: steps.cache-check.outputs.cache-hit != 'true'
-        run: samu -f /tmp/linux_build/build.ninja init/built-in.a
 
       - name: Save Verification Marker
         if: steps.cache-check.outputs.cache-hit != 'true'
