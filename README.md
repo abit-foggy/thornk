@@ -1,6 +1,6 @@
 # thornk
 
-An extension of [Thorn](https://github.com/abit-foggy/thorn) that converts Linux Kbuild to Ninja and `thorn.build` specifications. Powered by [Pith](https://github.com/abit-foggy/pith) and [Thorn](https://github.com/abit-foggy/thorn)'s embedded engine. Minimal, zero-bloat, deterministic, in the Unix spirit.
+An extension of [Thorn](https://github.com/abit-foggy/thorn) that converts Linux Kbuild to Ninja and `thorn.build` specifications. Powered by [Pith](https://github.com/abit-foggy/pith) and [Thorn](https://github.com/abit-foggy/thorn)'s embedded engine.
 
 [![CI](https://github.com/abit-foggy/thornk/actions/workflows/ci.yml/badge.svg)](https://github.com/abit-foggy/thornk/actions/workflows/ci.yml)
 [![Linux LTS (6.12) Compatibility](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-lts.yml/badge.svg)](https://github.com/abit-foggy/thornk/actions/workflows/kbuild-lts.yml)
