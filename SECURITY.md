@@ -6,9 +6,9 @@ Security updates are applied to the active release stream.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x   | Yes       |
+| Stable  | Yes       |
 | nightly | Yes       |
-| < 0.1.0 | No        |
+| < current | No      |
 
 ## Reporting a Vulnerability
 
