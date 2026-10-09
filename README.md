@@ -21,6 +21,12 @@ curl -fsSL https://raw.githubusercontent.com/abit-foggy/thornk/main/install.sh |
 - **Repository**: [https://github.com/abit-foggy/thornk](https://github.com/abit-foggy/thornk)
 - **Issue Tracker**: [https://github.com/abit-foggy/thornk/issues](https://github.com/abit-foggy/thornk/issues)
 
+## Authorship
+
+The majority of the code in this repository was written by an AI. All
+architectural design was made by a human, and every change was
+reviewed by both a human and an AI for flaws before it landed.
+
 ## License
 
 BSD 2-Clause Simplified License. See [LICENSE](LICENSE) for details.
